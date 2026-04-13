@@ -1,0 +1,39 @@
+# Dependencies
+electron/node_modules/
+
+# Python
+python/__pycache__/
+python/*.pyc
+python/*.pyo
+python/.venv/
+
+# Build output
+electron/out/
+electron/dist/
+
+# Environment
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary files
+*.tmp
+*.temp

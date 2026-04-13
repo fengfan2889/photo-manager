@@ -1,0 +1,7 @@
+# PhotoManager - Python Backend
+
+exifread>=3.0.0
+Pillow>=10.0.0
+orjson>=3.9.0
+loguru>=0.7.0
+click>=8.1.0
