@@ -38,6 +38,10 @@ export interface ElectronAPI {
   getSettings: (group?: string) => Promise<OrganizeSettings>
   saveSettings: (settings: OrganizeSettings) => Promise<boolean>
   
+  // 导入记录
+  getImportHistory: (limit?: number, offset?: number, status?: string) => Promise<ImportRecord[]>
+  getImportItems: (importId: number, action?: string) => Promise<ImportItem[]>
+  
   // 进度回调
   onProgress: (callback: (progress: Progress) => void) => void
   removeProgressListener: () => void
@@ -47,14 +51,45 @@ export interface OrganizeOptions {
   source: string
   dest: string
   mode: 'copy' | 'move' | 'link'
+  duplicate_mode?: 'skip' | 'update'
 }
 
 export interface OrganizeResult {
   success: boolean
   total: number
   processed: number
+  skipped: number
   failed: number
   errors: string[]
+  import_id?: number
+}
+
+export interface ImportRecord {
+  id: number
+  created_at: string
+  source_path: string
+  dest_path: string
+  mode: string
+  duplicate_mode: string
+  total_count: number
+  success_count: number
+  skip_count: number
+  fail_count: number
+  status: 'running' | 'completed' | 'failed' | 'cancelled'
+  error_msg: string | null
+}
+
+export interface ImportItem {
+  id: number
+  import_id: number
+  file_path: string
+  file_hash: string
+  file_size: number
+  organized_path: string | null
+  action: 'added' | 'skipped' | 'updated' | 'failed'
+  reason: string | null
+  error_msg: string | null
+  created_at: string
 }
 
 export interface Photo {
@@ -107,6 +142,7 @@ export interface OrganizeSettings {
   source?: string
   base?: string
   include_unknown?: boolean
+  duplicate_mode?: 'skip' | 'update'
   time_priority?: string
 }
 
@@ -145,6 +181,11 @@ const api: ElectronAPI = {
   
   getSettings: (group = 'organize') => ipcRenderer.invoke('get-settings', { group }),
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', { group: 'organize', ...settings }),
+  
+  getImportHistory: (limit = 20, offset = 0, status) => 
+    ipcRenderer.invoke('get-import-history', { limit, offset, status }),
+  getImportItems: (importId, action) => 
+    ipcRenderer.invoke('get-import-items', { import_id: importId, action }),
   
   onProgress: (callback) => {
     ipcRenderer.on('organize-progress', (_, progress) => callback(progress))

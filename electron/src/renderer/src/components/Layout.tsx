@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { Image, Settings, FolderOpen, Tag } from 'lucide-react'
+import { Image, Settings, FolderOpen, Tag, History } from 'lucide-react'
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (
@@ -55,6 +55,19 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             >
               <Tag className="w-4 h-4" />
               标签
+            </NavLink>
+            <NavLink
+              to="/history"
+              className={({ isActive }) =>
+                `flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  isActive
+                    ? 'bg-blue-50 text-blue-600'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }`
+              }
+            >
+              <History className="w-4 h-4" />
+              历史
             </NavLink>
             <NavLink
               to="/settings"

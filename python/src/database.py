@@ -208,6 +208,40 @@ def init_database(db_path: str = None) -> Database:
     )
     """)
     
+    # photo_import_record
+    db.execute("""
+    CREATE TABLE IF NOT EXISTS photo_import_record (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+        source_path     TEXT NOT NULL,
+        dest_path       TEXT NOT NULL,
+        mode            TEXT NOT NULL DEFAULT 'copy',
+        duplicate_mode  TEXT NOT NULL DEFAULT 'skip',
+        total_count     INTEGER DEFAULT 0,
+        success_count   INTEGER DEFAULT 0,
+        skip_count      INTEGER DEFAULT 0,
+        fail_count      INTEGER DEFAULT 0,
+        status          TEXT NOT NULL DEFAULT 'running',
+        error_msg       TEXT
+    )
+    """)
+    
+    # photo_import_item
+    db.execute("""
+    CREATE TABLE IF NOT EXISTS photo_import_item (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+        import_id       INTEGER NOT NULL REFERENCES photo_import_record(id) ON DELETE CASCADE,
+        file_path       TEXT NOT NULL,
+        file_hash       TEXT NOT NULL,
+        file_size       INTEGER,
+        organized_path   TEXT,
+        action          TEXT NOT NULL,
+        reason          TEXT,
+        error_msg       TEXT
+    )
+    """)
+    
     # sys_setting
     db.execute("""
     CREATE TABLE IF NOT EXISTS sys_setting (
@@ -248,6 +282,11 @@ def init_database(db_path: str = None) -> Database:
     db.execute("CREATE INDEX IF NOT EXISTS idx_photo_face_detect_subject ON photo_face_detect(subject_id)")
     db.execute("CREATE INDEX IF NOT EXISTS idx_photo_face_subject_name ON photo_face_subject(name)")
     db.execute("CREATE INDEX IF NOT EXISTS idx_photo_log_operation_photo ON photo_log_operation(photo_id)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_photo_import_record_created ON photo_import_record(created_at)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_photo_import_record_status ON photo_import_record(status)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_photo_import_item_import ON photo_import_item(import_id)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_photo_import_item_hash ON photo_import_item(file_hash)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_photo_import_item_action ON photo_import_item(action)")
     db.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_sys_setting_key ON sys_setting(key)")
     db.execute("CREATE INDEX IF NOT EXISTS idx_sys_log_operation_level ON sys_log_operation(level)")
     
@@ -270,6 +309,7 @@ def init_database(db_path: str = None) -> Database:
         ('organize_source', '', 'string', 'organize', '整理源目录'),
         ('organize_base', '', 'string', 'organize', '整理输出根目录'),
         ('organize_include_unknown', 'true', 'boolean', 'organize', '是否整理无法识别时间的照片'),
+        ('organize_duplicate_mode', 'skip', 'string', 'organize', '重复文件处理：skip/update'),
         ('time_priority', 'exif>mtime>ctime', 'string', 'organize', '时间优先级'),
         ('thumb_size', '200', 'number', 'display', '缩略图大小'),
         ('grid_columns', '4', 'number', 'display', '网格列数'),

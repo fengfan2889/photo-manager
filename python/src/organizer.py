@@ -13,6 +13,7 @@ from typing import List, Dict, Any, Optional, Callable
 from datetime import datetime
 from .exif_parser import ExifParser, get_file_info, resolve_taken_time, is_video_file, get_video_creation_time
 from .logger import get_logger
+from .import_recorder import ImportRecorder
 from PIL import Image
 
 log = get_logger(__name__)
@@ -36,8 +37,10 @@ class PhotoOrganizer:
         dest_dir: str,
         mode: str = 'copy',
         include_unknown: bool = True,
+        duplicate_mode: str = 'skip',
         on_progress: Optional[Callable] = None,
-        photo_repo=None  # 可选：用于保存到数据库
+        photo_repo=None,  # 可选：用于保存到数据库
+        import_recorder=None  # 可选：导入记录器
     ):
         """初始化整理器
         
@@ -46,15 +49,22 @@ class PhotoOrganizer:
             dest_dir: 目标目录
             mode: 整理模式 ('copy', 'move', 'link')
             include_unknown: 是否整理无法识别时间的照片
+            duplicate_mode: 重复文件处理模式 ('skip', 'update')
             on_progress: 进度回调函数
             photo_repo: 可选，用于保存到数据库
+            import_recorder: 可选，导入记录器
         """
         self.source_dir = Path(source_dir)
         self.dest_dir = Path(dest_dir)
         self.mode = mode
         self.include_unknown = include_unknown
+        self.duplicate_mode = duplicate_mode
         self.on_progress = on_progress
         self.photo_repo = photo_repo  # 数据库仓库
+        self.import_recorder = import_recorder  # 导入记录器
+        
+        # 导入会话 ID
+        self.import_id: Optional[int] = None
         
         # 统计
         self.total = 0
@@ -94,18 +104,41 @@ class PhotoOrganizer:
         Returns:
             整理结果统计
         """
+        # 创建导入会话
+        if self.import_recorder:
+            self.import_id = self.import_recorder.start_import(
+                source_path=str(self.source_dir),
+                dest_path=str(self.dest_dir),
+                mode=self.mode,
+                duplicate_mode=self.duplicate_mode
+            )
+        
         files = self.scan()
         
         for i, file_path in enumerate(files):
             try:
-                self._process_file(file_path)
-                self.processed += 1
+                result = self._process_file(file_path)
+                if result:
+                    self.processed += 1
+                else:
+                    self.skipped += 1
             except Exception as e:
                 log.error(f"Failed to process {file_path}", exc_info=e)
                 self.failed += 1
                 self.errors.append(f"{file_path}: {str(e)}")
-            
-            self.processed += 1
+                # 记录失败到导入明细
+                if self.import_recorder and self.import_id:
+                    self.import_recorder.record_item(
+                        import_id=self.import_id,
+                        file_path=str(file_path),
+                        file_hash='',
+                        file_size=0,
+                        organized_path=None,
+                        action='failed',
+                        reason=None,
+                        error_msg=str(e)
+                    )
+                    self.import_recorder.update_stats(self.import_id)
             
             # 触发进度回调
             if self.on_progress:
@@ -116,13 +149,20 @@ class PhotoOrganizer:
                     'status': f'处理中: {file_path.name}'
                 })
         
+        # 完成导入会话
+        if self.import_recorder and self.import_id:
+            status = 'completed' if self.failed == 0 else 'failed'
+            error_msg = '; '.join(self.errors[:5]) if self.errors else None
+            self.import_recorder.finish_import(self.import_id, status, error_msg)
+        
         result = {
             'success': self.failed == 0,
             'total': self.total,
             'processed': self.processed,
             'skipped': self.skipped,
             'failed': self.failed,
-            'errors': self.errors[:10]  # 最多返回10个错误
+            'errors': self.errors[:10],  # 最多返回10个错误
+            'import_id': self.import_id  # 返回导入会话 ID
         }
         
         # 保存移动日志到文件
@@ -142,6 +182,38 @@ class PhotoOrganizer:
             整理后的目标路径，失败返回 None
         """
         log.debug(f"Processing: {file_path}")
+        
+        # 计算文件哈希（提前计算用于去重检查）
+        try:
+            file_hash = self.compute_file_hash(str(file_path))
+        except Exception as e:
+            log.warning(f"Failed to compute hash for {file_path}: {e}")
+            file_hash = ''
+        
+        # 检查重复
+        action = 'added'
+        reason = None
+        if self.import_recorder and file_hash:
+            action, reason = self.import_recorder.hash_checker.check(file_hash, self.duplicate_mode)
+            
+            if action == 'skipped':
+                log.info(f"Skipping duplicate file: {file_path.name} (hash={file_hash[:16]}...)")
+                self.skipped += 1
+                # 记录到导入明细
+                self.import_recorder.record_item(
+                    import_id=self.import_id,
+                    file_path=str(file_path),
+                    file_hash=file_hash,
+                    file_size=0,
+                    organized_path=None,
+                    action=action,
+                    reason=reason
+                )
+                self.import_recorder.update_stats(self.import_id)
+                return None
+            
+            if action == 'updated':
+                log.info(f"Updating existing file: {file_path.name}")
         
         # 判断文件类型并解析
         is_video = file_path.suffix.lower() in VIDEO_FORMATS
@@ -182,6 +254,18 @@ class PhotoOrganizer:
         if not taken_time and not self.include_unknown:
             log.debug(f"Skipping file without date: {file_path}")
             self.skipped += 1
+            # 记录到导入明细
+            if self.import_recorder and self.import_id:
+                self.import_recorder.record_item(
+                    import_id=self.import_id,
+                    file_path=str(file_path),
+                    file_hash=file_hash,
+                    file_size=file_info.get('size', 0),
+                    organized_path=None,
+                    action='skipped',
+                    reason='no_date'
+                )
+                self.import_recorder.update_stats(self.import_id)
             return None
         
         # 生成目标路径
@@ -226,9 +310,20 @@ class PhotoOrganizer:
         
         # 保存到数据库
         if self.photo_repo:
-            self._save_to_database(file_path, target_path, parse_result)
-        else:
-            log.warning("photo_repo not provided, skipping database save")
+            self._save_to_database(file_path, target_path, parse_result, file_hash)
+        
+        # 记录到导入明细
+        if self.import_recorder and self.import_id:
+            self.import_recorder.record_item(
+                import_id=self.import_id,
+                file_path=str(file_path),
+                file_hash=file_hash,
+                file_size=file_info.get('size', 0),
+                organized_path=str(target_path),
+                action='added' if action == 'added' else action,
+                reason=reason
+            )
+            self.import_recorder.update_stats(self.import_id)
         
         return target_path
     
@@ -330,21 +425,32 @@ class PhotoOrganizer:
         except Exception as e:
             log.error(f"Failed to save move log: {e}", exc_info=True)
     
-    def _save_to_database(self, source_path: Path, dest_path: Path, parse_result: dict):
+    def _save_to_database(self, source_path: Path, dest_path: Path, parse_result: dict, file_hash: str = None):
         """保存照片信息到数据库
         
         Args:
             source_path: 原始文件路径
             dest_path: 目标文件路径
             parse_result: 解析结果
+            file_hash: 预计算的文件哈希
         """
         try:
-            # 计算文件哈希
-            file_hash = self.compute_file_hash(str(dest_path))
+            # 如果没有预计算哈希，则计算
+            if not file_hash:
+                file_hash = self.compute_file_hash(str(dest_path))
             
             # 检查是否已存在（根据 hash 去重）
-            if self.photo_repo.get_by_hash(file_hash):
-                log.debug(f"Photo already exists, skipping: {dest_path.name}")
+            existing = self.photo_repo.get_by_hash(file_hash)
+            if existing:
+                # 如果是 update 模式，更新记录
+                if self.duplicate_mode == 'update':
+                    self.photo_repo.update(existing['id'], {
+                        'file_path': str(dest_path),
+                        'organized_date': datetime.now().isoformat(),
+                    })
+                    log.info(f"Updated existing record: {dest_path.name}")
+                else:
+                    log.debug(f"Photo already exists, skipping: {dest_path.name}")
                 return
             
             # 文件信息
@@ -374,6 +480,7 @@ class PhotoOrganizer:
                 'rating': 0,
                 'thumb_path': None,
                 'exif_json': None,
+                'import_id': self.import_id if self.import_id else None,
             }
             
             self.photo_repo.insert(data)

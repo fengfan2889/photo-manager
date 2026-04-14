@@ -18,6 +18,7 @@ from .face_detector import detect_faces, FaceDetector
 from .json_exporter import export_db, import_db
 from .photo_repo import PhotoRepo, TagRepo, FaceRepo, SubjectRepo
 from .setting_repo import SettingRepo
+from .import_recorder import ImportRecorder
 
 # 初始化日志
 Logger.init(level="INFO")
@@ -43,6 +44,7 @@ class IPCServer:
         self.face_repo: Optional[FaceRepo] = None
         self.subject_repo: Optional[SubjectRepo] = None
         self.setting_repo: Optional[SettingRepo] = None
+        self.import_recorder: Optional[ImportRecorder] = None
         
     def connect(self):
         """连接数据库"""
@@ -59,6 +61,7 @@ class IPCServer:
         self.face_repo = FaceRepo(self.db)
         self.subject_repo = SubjectRepo(self.db)
         self.setting_repo = SettingRepo(self.db)
+        self.import_recorder = ImportRecorder(self.db)
         
         log.info(f"Connected to database: {self.db_path}")
     
@@ -127,6 +130,14 @@ class IPCServer:
                 return self._get_settings(args)
             elif command == "save-settings":
                 return self._save_settings(args)
+            
+            # 导入记录操作
+            elif command == "get-import-history":
+                return self._get_import_history(args)
+            elif command == "get-import-items":
+                return self._get_import_items(args)
+            elif command == "get-import":
+                return self._get_import(args)
             else:
                 return {"success": False, "error": f"Unknown command: {command}"}
         except Exception as e:
@@ -141,6 +152,7 @@ class IPCServer:
         dest = args.get("dest", "")
         mode = args.get("mode", "copy")
         include_unknown = args.get("include_unknown", True)
+        duplicate_mode = args.get("duplicate_mode", "skip")
         
         if not source:
             return {"success": False, "error": "Source directory required"}
@@ -153,7 +165,9 @@ class IPCServer:
             dest_dir=dest,
             mode=mode,
             include_unknown=include_unknown,
-            photo_repo=self.photo_repo
+            duplicate_mode=duplicate_mode,
+            photo_repo=self.photo_repo,
+            import_recorder=self.import_recorder
         )
         
         result = organizer.organize()
@@ -416,6 +430,7 @@ class IPCServer:
                 source=args.get("source"),
                 base=args.get("base"),
                 include_unknown=args.get("include_unknown"),
+                duplicate_mode=args.get("duplicate_mode"),
                 time_priority=args.get("time_priority")
             )
             return {"success": success}
@@ -423,6 +438,68 @@ class IPCServer:
             settings = args.get("settings", {})
             success = self.setting_repo.set_group(settings)
             return {"success": success}
+    
+    # ============ 导入记录操作 ============
+    
+    def _get_import_history(self, args: Dict) -> Dict:
+        """获取导入历史"""
+        limit = args.get("limit", 20)
+        offset = args.get("offset", 0)
+        status = args.get("status")
+        
+        records = self.import_recorder.get_import_history(
+            limit=limit,
+            offset=offset,
+            status=status
+        )
+        
+        # 转换日期
+        for record in records:
+            for key in ['created_at']:
+                if record.get(key):
+                    record[key] = str(record[key])
+        
+        return {"success": True, "data": records}
+    
+    def _get_import_items(self, args: Dict) -> Dict:
+        """获取导入明细"""
+        import_id = args.get("import_id")
+        action = args.get("action")
+        
+        if not import_id:
+            return {"success": False, "error": "Import ID required"}
+        
+        items = self.import_recorder.get_import_items(
+            import_id=import_id,
+            action=action
+        )
+        
+        # 转换日期
+        for item in items:
+            for key in ['created_at']:
+                if item.get(key):
+                    item[key] = str(item[key])
+        
+        return {"success": True, "data": items}
+    
+    def _get_import(self, args: Dict) -> Dict:
+        """获取单个导入会话"""
+        import_id = args.get("import_id")
+        
+        if not import_id:
+            return {"success": False, "error": "Import ID required"}
+        
+        record = self.import_recorder.get_import_by_id(import_id)
+        
+        if not record:
+            return {"success": False, "error": "Import not found"}
+        
+        # 转换日期
+        for key in ['created_at']:
+            if record.get(key):
+                record[key] = str(record[key])
+        
+        return {"success": True, "data": record}
 
 
 def run_ipc():

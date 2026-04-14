@@ -383,6 +383,27 @@ function setupIpcHandlers(): void {
     }
   })
 
+  // 导入记录
+  ipcMain.handle('get-import-history', async (_, { limit = 20, offset = 0, status }) => {
+    try {
+      const result = await pythonExec('get-import-history', { limit, offset, status })
+      return result?.data || []
+    } catch (error) {
+      log.error('get-import-history failed:', error)
+      return []
+    }
+  })
+
+  ipcMain.handle('get-import-items', async (_, { import_id, action }) => {
+    try {
+      const result = await pythonExec('get-import-items', { import_id, action })
+      return result?.data || []
+    } catch (error) {
+      log.error('get-import-items failed:', error)
+      return []
+    }
+  })
+
   // 通用 Python 执行器
   ipcMain.handle('python-exec', async (_, command: string, args: Record<string, unknown> = {}) => {
     log.info(`python-exec: ${command}`, args)

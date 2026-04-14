@@ -133,11 +133,13 @@ class SettingRepo:
             'source': config.get('organize_source', ''),
             'base': config.get('organize_base', ''),
             'include_unknown': config.get('organize_include_unknown', 'true') == 'true',
+            'duplicate_mode': config.get('organize_duplicate_mode', 'skip'),
             'time_priority': config.get('time_priority', 'exif>mtime>ctime')
         }
     
     def save_organize_config(self, mode: str = None, source: str = None, 
                             base: str = None, include_unknown: bool = None,
+                            duplicate_mode: str = None,
                             time_priority: str = None) -> bool:
         """保存整理配置
         
@@ -146,6 +148,7 @@ class SettingRepo:
             source: 源目录
             base: 输出目录
             include_unknown: 是否包含无法识别时间的照片
+            duplicate_mode: 重复文件处理模式 (skip/update)
             time_priority: 时间优先级
             
         Returns:
@@ -160,6 +163,8 @@ class SettingRepo:
             settings['organize_base'] = base
         if include_unknown is not None:
             settings['organize_include_unknown'] = 'true' if include_unknown else 'false'
+        if duplicate_mode is not None:
+            settings['organize_duplicate_mode'] = duplicate_mode
         if time_priority is not None:
             settings['time_priority'] = time_priority
         
