@@ -36,26 +36,46 @@ class HashChecker:
             return dict(row)
         return None
     
-    def check(self, file_hash: str, duplicate_mode: str = 'skip') -> tuple:
-        """检查重复，返回 (action, reason)
+    def get_existing_by_path(self, file_path: str) -> Optional[Dict[str, Any]]:
+        """通过文件路径获取已存在的记录"""
+        cursor = self.db.execute(
+            "SELECT * FROM photo_info WHERE file_path = ? LIMIT 1",
+            (file_path,)
+        )
+        row = cursor.fetchone()
+        if row:
+            return dict(row)
+        return None
+    
+    def check(self, file_hash: str, duplicate_mode: str = 'skip', file_path: str = None) -> tuple:
+        """检查重复，返回 (action, reason, existing_path)
         
         Args:
             file_hash: 文件哈希
             duplicate_mode: skip=跳过, update=覆盖
+            file_path: 文件路径（用于查找已存在的记录）
             
         Returns:
-            (action, reason) - action: added/skipped/updated, reason: 原因
+            (action, reason, existing_path) - action: added/skipped/updated, reason: 原因, existing_path: 已存在文件的路径
         """
         existing = self.get_existing(file_hash)
         
+        if existing is None and file_path:
+            # 按文件路径查找
+            existing = self.get_existing_by_path(file_path)
+        
         if existing is None:
-            return 'added', None
+            return 'added', None, None
+        
+        # 优先使用 organized_path，其次使用 file_path
+        existing_path = existing.get('organized_path') or existing.get('file_path')
+        log.info(f"HashChecker.check: hash={file_hash[:16] if file_hash else 'N/A'}..., existing={existing['id'] if existing else None}, existing_path={existing_path}")
         
         if duplicate_mode == 'update':
-            return 'updated', f"updated existing record (id={existing['id']})"
+            return 'updated', f"updated existing record (id={existing['id']})", existing_path
         
         # duplicate_mode == 'skip'
-        return 'skipped', 'duplicate'
+        return 'skipped', 'duplicate', existing_path
 
 
 class ImportRecorder:
@@ -169,14 +189,14 @@ class ImportRecorder:
         Returns:
             (action, reason) - 添加到导入记录
         """
-        action, reason = self.hash_checker.check(file_hash, duplicate_mode)
+        action, reason, existing_path = self.hash_checker.check(file_hash, duplicate_mode)
         
         self.record_item(
             import_id=import_id,
             file_path=file_path,
             file_hash=file_hash,
             file_size=file_size,
-            organized_path=organized_path if action == 'added' else None,
+            organized_path=existing_path if action in ('skipped', 'updated') else organized_path,
             action=action,
             reason=reason
         )

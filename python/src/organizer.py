@@ -5,6 +5,7 @@
 """
 
 import os
+import sys
 import shutil
 import json
 import hashlib
@@ -120,8 +121,7 @@ class PhotoOrganizer:
                 result = self._process_file(file_path)
                 if result:
                     self.processed += 1
-                else:
-                    self.skipped += 1
+                # 不在这里统计 skipped，因为 _process_file 内部已经统计了
             except Exception as e:
                 log.error(f"Failed to process {file_path}", exc_info=e)
                 self.failed += 1
@@ -148,6 +148,8 @@ class PhotoOrganizer:
                     'currentFile': str(file_path),
                     'status': f'处理中: {file_path.name}'
                 })
+            # 输出进度到 stdout 供 Electron 捕获（使用特殊前缀，立即刷新）
+            print(f"__PM_PROGRESS__{json.dumps({'current': i + 1, 'total': self.total, 'status': file_path.name})}", flush=True)
         
         # 完成导入会话
         if self.import_recorder and self.import_id:
@@ -193,11 +195,12 @@ class PhotoOrganizer:
         # 检查重复
         action = 'added'
         reason = None
+        existing_path = None  # 已存在的文件路径（用于显示对比）
         if self.import_recorder and file_hash:
-            action, reason = self.import_recorder.hash_checker.check(file_hash, self.duplicate_mode)
+            action, reason, existing_path = self.import_recorder.hash_checker.check(file_hash, self.duplicate_mode, str(file_path))
             
             if action == 'skipped':
-                log.info(f"Skipping duplicate file: {file_path.name} (hash={file_hash[:16]}...)")
+                log.info(f"Skipping duplicate file: {file_path.name} (hash={file_hash[:16]}...) existing_path={existing_path}")
                 self.skipped += 1
                 # 记录到导入明细
                 self.import_recorder.record_item(
@@ -205,7 +208,7 @@ class PhotoOrganizer:
                     file_path=str(file_path),
                     file_hash=file_hash,
                     file_size=0,
-                    organized_path=None,
+                    organized_path=existing_path,  # 保存已存在文件的路径
                     action=action,
                     reason=reason
                 )

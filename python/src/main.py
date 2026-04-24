@@ -21,11 +21,16 @@ from .setting_repo import SettingRepo
 from .import_recorder import ImportRecorder
 
 # 初始化日志
-Logger.init(level="INFO")
+import os
+current_dir = os.getcwd()
+Logger.init(log_dir=current_dir, level="INFO")
 log = get_logger(__name__)
+log.info(f"Python log directory: {current_dir}")
 
-# 数据库路径
-DB_PATH = Path.home() / ".photo-manager" / "photo-manager.db"
+# 数据库路径 - 项目目录下 doc/db/sqlite/
+# __file__ = python/src/main.py, parent=python/src, parent=python, parent=项目根目录
+DB_PATH = Path(__file__).parent.parent.parent / "doc" / "db" / "sqlite" / "photo-manager.db"
+log.info(f"Database path: {DB_PATH}")
 
 
 class IPCServer:
@@ -51,9 +56,15 @@ class IPCServer:
         # 确保目录存在
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         
+        log.info(f"Connecting to database: {self.db_path}")
+        
         # 初始化数据库（创建表）
         self.db = init_database(self.db_path)
-        self.db.connect()
+        try:
+            self.db.connect()
+        except Exception as e:
+            log.error(f"Failed to connect database: {e}", exc_info=True)
+            raise
         
         # 初始化仓库
         self.photo_repo = PhotoRepo(self.db)
@@ -81,6 +92,12 @@ class IPCServer:
             命令结果
         """
         try:
+            # 系统操作
+            if command == "get-current-dir":
+                return self._get_current_dir(args)
+            elif command == "write-log":
+                return self._write_log(args)
+            
             # 照片操作
             if command == "organize":
                 return self._organize(args)
@@ -178,6 +195,8 @@ class IPCServer:
         limit = args.get("limit", 100)
         offset = args.get("offset", 0)
         
+        log.info(f"Query photos: limit={limit}, offset={offset}")
+        
         photos = self.photo_repo.get_list(
             limit=limit,
             offset=offset,
@@ -188,6 +207,8 @@ class IPCServer:
             date_to=args.get("date_to"),
             search=args.get("search")
         )
+        
+        log.info(f"Query photos result: {len(photos)} items")
         
         # 转换日期
         for photo in photos:
@@ -500,6 +521,36 @@ class IPCServer:
                 record[key] = str(record[key])
         
         return {"success": True, "data": record}
+    
+    def _get_current_dir(self, args: Dict) -> Dict:
+        """获取当前目录"""
+        import os
+        current_dir = os.getcwd()
+        return {"success": True, "data": current_dir}
+    
+    def _write_log(self, args: Dict) -> Dict:
+        """写入日志文件"""
+        file_path = args.get("file_path")
+        message = args.get("message")
+        
+        if not file_path or not message:
+            return {"success": False, "error": "File path and message required"}
+        
+        try:
+            import os
+            # 确保日志目录存在
+            log_dir = os.path.dirname(file_path)
+            if not os.path.exists(log_dir):
+                os.makedirs(log_dir, exist_ok=True)
+            
+            # 写入日志
+            with open(file_path, 'a', encoding='utf-8') as f:
+                f.write(message + '\n')
+            
+            return {"success": True}
+        except Exception as e:
+            log.error(f"Failed to write log: {e}")
+            return {"success": False, "error": str(e)}
 
 
 def run_ipc():
