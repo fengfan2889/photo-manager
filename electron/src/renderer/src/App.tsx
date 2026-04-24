@@ -1,6 +1,6 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import ReactDOM from 'react-dom/client'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Layout from './components/Layout'
 import Gallery from './pages/Gallery'
 import Organizer from './pages/Organizer'
@@ -14,9 +14,19 @@ import { logger } from './utils/logger'
 // 初始化日志
 logger.info('[App]', 'PhotoManager starting...')
 
+// 路由监听组件
+function RouteLogger() {
+  const location = useLocation()
+  useEffect(() => {
+    console.log('[Route] changed to:', location.pathname)
+  }, [location])
+  return null
+}
+
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
     <BrowserRouter>
+      <RouteLogger />
       <Layout>
         <Routes>
           <Route path="/" element={<Gallery />} />

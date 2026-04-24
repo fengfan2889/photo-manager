@@ -1,26 +1,83 @@
-import { useState, useEffect } from 'react'
-import { History, CheckCircle, XCircle, Clock, ChevronRight, FileText, Filter } from 'lucide-react'
+import { useState, useEffect, Component } from 'react'
+import { History, CheckCircle, XCircle, Clock, ChevronRight, FileText, Filter, X, ZoomIn } from 'lucide-react'
 import type { ImportRecord, ImportItem } from '../../preload/index'
 
-export default function ImportHistory() {
+// 图片放大查看组件
+function ImageViewer({ src, title, onClose }: { src: string; title: string; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center" onClick={onClose}>
+      <div className="absolute top-4 right-4">
+        <button onClick={onClose} className="p-2 bg-white rounded-full hover:bg-gray-200">
+          <X className="w-6 h-6" />
+        </button>
+      </div>
+      <div className="max-w-4xl max-h-[90vh]">
+        <div className="text-white text-center mb-2">{title}</div>
+        <img
+          src={src}
+          alt={title}
+          className="max-w-full max-h-[85vh] object-contain"
+          onClick={(e) => e.stopPropagation()}
+        />
+      </div>
+    </div>
+  )
+}
+
+// 错误边界组件
+class ErrorBoundary extends Component<{children: React.ReactNode}, {hasError: boolean, error?: Error}> {
+  constructor(props: {children: React.ReactNode}) {
+    super(props)
+    this.state = { hasError: false }
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error }
+  }
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('[ImportHistory] ErrorBoundary caught:', error, errorInfo)
+  }
+  render() {
+    if (this.state.hasError) {
+      return <div className="p-4 text-red-500">页面崩溃: {this.state.error?.message}</div>
+    }
+    return this.props.children
+  }
+}
+
+function ImportHistoryContent() {
   const [records, setRecords] = useState<ImportRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedRecord, setSelectedRecord] = useState<ImportRecord | null>(null)
   const [items, setItems] = useState<ImportItem[]>([])
   const [filter, setFilter] = useState<string>('all')
+  const [error, setError] = useState<string | null>(null)
+  const [viewerImage, setViewerImage] = useState<{ src: string; title: string } | null>(null)
 
   useEffect(() => {
+    console.log('[ImportHistory] component mounted, filter:', filter)
     loadHistory()
-  }, [])
+  }, [filter])
 
   const loadHistory = async () => {
+    console.log('[ImportHistory] loading history, filter:', filter)
     setLoading(true)
+    setError(null)
     try {
       const status = filter === 'all' ? undefined : filter
+      console.log('[ImportHistory] calling getImportHistory API')
       const history = await window.electronAPI.getImportHistory(50, 0, status)
-      setRecords(history)
-    } catch (error) {
-      console.error('Failed to load import history:', error)
+      console.log('[ImportHistory] got history:', history, 'type:', typeof history)
+      // 确保返回数组，不是数组则用空数组
+      const arr = Array.isArray(history) ? history : []
+      setRecords(arr)
+      if (arr.length === 0) {
+        setError('暂无导入记录')
+      }
+    } catch (err) {
+      console.error('[ImportHistory] Failed to load import history:', err)
+      // API 失败时显示空记录，不崩溃
+      setRecords([])
+      setError('服务未就绪，请重试')
     } finally {
       setLoading(false)
     }
@@ -29,9 +86,9 @@ export default function ImportHistory() {
   const loadItems = async (importId: number) => {
     try {
       const result = await window.electronAPI.getImportItems(importId)
-      setItems(result)
-    } catch (error) {
-      console.error('Failed to load import items:', error)
+      setItems(result || [])
+    } catch (err) {
+      console.error('Failed to load import items:', err)
     }
   }
 
@@ -75,6 +132,14 @@ export default function ImportHistory() {
 
   return (
     <div className="h-full flex">
+      {/* 错误提示 */}
+      {error && (
+        <div className="fixed top-4 right-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded z-50">
+          <span>{error}</span>
+          <button onClick={() => setError(null)} className="ml-2 font-bold">&times;</button>
+        </div>
+      )}
+
       {/* 左侧列表 */}
       <div className="w-1/2 border-r border-gray-200 flex flex-col">
         <div className="p-4 border-b border-gray-200">
@@ -238,14 +303,73 @@ export default function ImportHistory() {
                            item.action === 'updated' ? '更新' : '失败'}
                         </span>
                       </div>
+                      
+                      {/* 重复文件对比显示 */}
+                      {item.action === 'skipped' && item.organized_path && (
+                        <div className="mt-3 pt-3 border-t border-gray-200">
+                          <div className="text-xs text-gray-500 mb-2">对比原图与已存在图片：</div>
+                          <div className="flex gap-4">
+                            {/* 原文件 */}
+                            <div className="flex-1">
+                              <div className="text-xs text-gray-500 mb-1">原文件</div>
+                              <div
+                                className="relative cursor-pointer group"
+                                onClick={() => setViewerImage({ src: `file:///${item.file_path.replace(/\\/g, '/')}`, title: '原文件' })}
+                              >
+                                <img
+                                  src={`file:///${item.file_path.replace(/\\/g, '/')}`}
+                                  alt="原文件"
+                                  className="w-full h-24 object-cover rounded bg-gray-200 group-hover:opacity-80"
+                                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                                />
+                                <ZoomIn className="absolute inset-0 m-auto w-6 h-6 text-gray-400 opacity-0 group-hover:opacity-100" />
+                              </div>
+                            </div>
+                            {/* 已存在文件 */}
+                            <div className="flex-1">
+                              <div className="text-xs text-gray-500 mb-1">已存在</div>
+                              <div
+                                className="relative cursor-pointer group"
+                                onClick={() => setViewerImage({ src: `file:///${item.organized_path.replace(/\\/g, '/')}`, title: '已存在文件' })}
+                              >
+                                <img
+                                  src={`file:///${item.organized_path.replace(/\\/g, '/')}`}
+                                  alt="已存在"
+                                  className="w-full h-24 object-cover rounded bg-gray-200 group-hover:opacity-80"
+                                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                                />
+                                <ZoomIn className="absolute inset-0 m-auto w-6 h-6 text-gray-400 opacity-0 group-hover:opacity-100" />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
               )}
             </div>
+            
+            {/* 图片放大查看 */}
+            {viewerImage && (
+              <ImageViewer
+                src={viewerImage.src}
+                title={viewerImage.title}
+                onClose={() => setViewerImage(null)}
+              />
+            )}
           </>
         )}
       </div>
     </div>
+  )
+}
+
+// 带错误边界的导出
+export default function ImportHistory() {
+  return (
+    <ErrorBoundary>
+      <ImportHistoryContent />
+    </ErrorBoundary>
   )
 }

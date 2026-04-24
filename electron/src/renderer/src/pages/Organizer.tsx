@@ -7,6 +7,7 @@ export default function Organizer() {
   const [sourceDir, setSourceDir] = useState('')
   const [destDir, setDestDir] = useState('')
   const [mode, setMode] = useState<'copy' | 'move' | 'link'>('copy')
+  const [duplicateMode, setDuplicateMode] = useState<'skip' | 'update'>('skip')
   const [organizing, setOrganizing] = useState(false)
   const [progress, setProgress] = useState({ current: 0, total: 0, status: '' })
   const { error, showError, clearError } = useError()
@@ -20,6 +21,7 @@ export default function Organizer() {
           setSourceDir(config.source || '')
           setDestDir(config.base || '')
           setMode(config.mode || 'copy')
+          setDuplicateMode(config.duplicate_mode || 'skip')
           logger.debug('Config loaded', config)
         }
       } catch (error) {
@@ -57,10 +59,11 @@ export default function Organizer() {
       const success = await window.electronAPI.saveSettings({
         source: sourceDir,
         base: destDir,
-        mode
+        mode,
+        duplicate_mode: duplicateMode
       })
       if (success) {
-        logger.debug('Config saved', { source: sourceDir, base: destDir, mode })
+        logger.debug('Config saved', { source: sourceDir, base: destDir, mode, duplicate_mode: duplicateMode })
       } else {
         showError('保存配置失败')
       }
@@ -91,15 +94,12 @@ export default function Organizer() {
       const result = await window.electronAPI.organizePhotos({
         source: sourceDir,
         dest: destDir,
-        mode
+        mode,
+        duplicate_mode: duplicateMode
       })
       logger.info('Organize completed', result)
       
-      if (result.success) {
-        alert(`整理完成！成功: ${result.processed}, 失败: ${result.failed}`)
-      } else {
-        showError('整理失败', result.errors?.join(', '))
-      }
+      alert(`整理完成！总数: ${result.total}, 成功: ${result.processed}, 跳过: ${result.skipped}, 失败: ${result.failed}`)
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
       showError('整理失败', msg)
@@ -178,6 +178,30 @@ export default function Organizer() {
                 </label>
               ))}
             </div>
+          </div>
+
+          {/* 重复文件处理 */}
+          <div>
+            <label className="block text-sm font-medium mb-2">重复文件处理</label>
+            <div className="flex gap-4">
+              {(['skip', 'update'] as const).map((m) => (
+                <label key={m} className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="duplicateMode"
+                    checked={duplicateMode === m}
+                    onChange={() => setDuplicateMode(m)}
+                    className="w-4 h-4"
+                  />
+                  <span>
+                    {m === 'skip' ? '跳过重复文件' : '覆盖重复文件'}
+                  </span>
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              按文件内容 Hash 判断是否重复
+            </p>
           </div>
 
           {/* 进度 */}

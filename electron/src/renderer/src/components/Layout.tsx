@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom'
 import { Image, Settings, FolderOpen, Tag, History } from 'lucide-react'
 
 export default function Layout({ children }: { children: React.ReactNode }) {
+  
   return (
     <div className="min-h-screen bg-gray-50">
       {/* 顶部导航 */}
@@ -58,6 +59,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </NavLink>
             <NavLink
               to="/history"
+              end
               className={({ isActive }) =>
                 `flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                   isActive

@@ -7,6 +7,7 @@ import Organizer from './pages/Organizer'
 import Annotation from './pages/Annotation'
 import Tags from './pages/Tags'
 import Settings from './pages/Settings'
+import ImportHistory from './pages/ImportHistory'
 import './index.css'
 import { logger } from './utils/logger'
 
@@ -22,6 +23,7 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
           <Route path="/organize" element={<Organizer />} />
           <Route path="/photo/:id" element={<Annotation />} />
           <Route path="/tags" element={<Tags />} />
+          <Route path="/history" element={<ImportHistory />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
