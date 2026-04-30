@@ -108,7 +108,7 @@ class PhotoRepo:
         return row['count'] if row else 0
     
     def insert(self, data: Dict[str, Any]) -> int:
-        """插入照片"""
+        """插入照片，返回插入的 ID"""
         return self.db.insert_photo(data)
     
     def update(self, photo_id: int, data: Dict[str, Any]) -> bool:
@@ -167,11 +167,12 @@ class PhotoRepo:
         
         tags = extract_tags_from_path(file_path, import_root)
         
+        log.info(f"Extracted {len(tags)} tags from path '{file_path}': {tags}")
+        
         for tag_name in tags:
             tag_id = self.tag_repo.get_or_create(tag_name)
             self.tag_repo.add_photo_tag(photo_id, tag_id)
-        
-        log.info(f"Added {len(tags)} tags to photo {photo_id}: {tags}")
+            log.info(f"Associated tag '{tag_name}' (id={tag_id}) with photo {photo_id}")
     
     def delete(self, photo_id: int) -> bool:
         """删除照片"""
@@ -190,10 +191,14 @@ class TagRepo:
         self.db = db
     
     def get_all(self) -> List[Dict[str, Any]]:
-        """获取所有标签"""
-        cursor = self.db.execute(
-            "SELECT * FROM photo_tag ORDER BY name"
-        )
+        """获取所有标签（包含照片数量）"""
+        cursor = self.db.execute("""
+            SELECT t.*, COUNT(pt.photo_id) as photo_count 
+            FROM photo_tag t
+            LEFT JOIN photo_photo_tag pt ON t.id = pt.tag_id
+            GROUP BY t.id
+            ORDER BY t.name
+        """)
         return [dict(row) for row in cursor.fetchall()]
     
     def get_by_id(self, tag_id: int) -> Optional[Dict[str, Any]]:

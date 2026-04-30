@@ -347,6 +347,7 @@ class PhotoOrganizer:
         # 保存到数据库
         if self.photo_repo:
             photo_id = self._save_to_database(file_path, target_path, parse_result, file_hash)
+            log.info(f"Saved to DB: photo_id={photo_id}, file={file_path.name}")
             # 记录照片操作日志
             self.db.record_log_operation(
                 action='added',
@@ -511,7 +512,7 @@ class PhotoOrganizer:
                     log.info(f"Updated existing record: {dest_path.name}")
                 else:
                     log.debug(f"Photo already exists, skipping: {dest_path.name}")
-                return
+                return existing['id']  # 返回已存在照片的 ID
             
             # 文件信息
             file_info = get_file_info(str(dest_path))

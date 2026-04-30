@@ -3,11 +3,12 @@ import { logger } from '../utils/logger'
 import { ErrorToast } from '../components/ErrorToast'
 import { useError } from '../hooks/useError'
 
-interface Tag {
-  id: number
-  name: string
-  color: string
-}
+  interface Tag {
+    id: number;
+    name: string;
+    color: string;
+    photo_count?: number;  // 添加照片数量
+  }
 
 export default function Tags() {
   const [tags, setTags] = useState<Tag[]>([])
@@ -139,6 +140,11 @@ export default function Tags() {
                       style={{ backgroundColor: tag.color }}
                     />
                     <span className="text-sm">{tag.name}</span>
+                    {tag.photo_count !== undefined && (
+                      <span className="text-xs text-gray-500 ml-2">
+                        ({tag.photo_count})
+                      </span>
+                    )}
                   </div>
                   <button
                     onClick={() => deleteTag(tag.id)}
