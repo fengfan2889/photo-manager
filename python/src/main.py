@@ -67,8 +67,8 @@ class IPCServer:
             raise
         
         # 初始化仓库
-        self.photo_repo = PhotoRepo(self.db)
         self.tag_repo = TagRepo(self.db)
+        self.photo_repo = PhotoRepo(self.db, self.tag_repo)
         self.face_repo = FaceRepo(self.db)
         self.subject_repo = SubjectRepo(self.db)
         self.setting_repo = SettingRepo(self.db)
@@ -184,7 +184,8 @@ class IPCServer:
             include_unknown=include_unknown,
             duplicate_mode=duplicate_mode,
             photo_repo=self.photo_repo,
-            import_recorder=self.import_recorder
+            import_recorder=self.import_recorder,
+            db=self.db
         )
         
         result = organizer.organize()
@@ -633,7 +634,11 @@ def organize(source: str, dest: str, mode: str, init_db: bool):
     if not dest:
         dest = str(DB_PATH.parent / "organized")
     
-    organizer = PhotoOrganizer(source, dest, mode)
+    # 初始化数据库
+    db = init_database(str(DB_PATH))
+    db.connect()
+    
+    organizer = PhotoOrganizer(source, dest, mode, db=db)
     result = organizer.organize()
     
     click.echo(f"\n整理完成:")

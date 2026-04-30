@@ -75,6 +75,38 @@ class Database:
         )
         return cursor.fetchone()
     
+    def record_log_operation(
+        self,
+        action: str,
+        source_path: str = None,
+        dest_path: str = None,
+        action_type: str = None,
+        status: str = 'success',
+        error_msg: str = None,
+        photo_id: int = None
+    ) -> int:
+        """记录照片操作日志
+        
+        Args:
+            action: 操作类型 (added/skipped/updated/failed)
+            source_path: 源路径
+            dest_path: 目标路径
+            action_type: 操作子类型 (import/update/delete)
+            status: 状态 (success/failed)
+            error_msg: 错误信息
+            photo_id: 关联的照片 ID
+            
+        Returns:
+            日志记录 ID
+        """
+        cursor = self.execute("""
+            INSERT INTO photo_log_operation 
+            (photo_id, action, source_path, dest_path, action_type, status, error_msg)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (photo_id, action, source_path, dest_path, action_type, status, error_msg))
+        self.commit()
+        return cursor.lastrowid
+    
     def get_photos(self, limit: int = 100, offset: int = 0):
         """获取照片列表"""
         cursor = self.execute(
@@ -314,7 +346,7 @@ def init_database(db_path: str = None) -> Database:
         ('thumb_size', '200', 'number', 'display', '缩略图大小'),
         ('grid_columns', '4', 'number', 'display', '网格列数'),
         ('theme', 'light', 'string', 'display', '主题'),
-        ('log_level', 'INFO', 'string', 'log', '日志级别')
+('log_level', 'INFO', 'string', 'log', '日志级别')
     """)
     
     db.commit()

@@ -14,8 +14,9 @@ log = get_logger(__name__)
 class PhotoRepo:
     """照片仓库类"""
     
-    def __init__(self, db: Database):
+    def __init__(self, db: Database, tag_repo: TagRepo = None):
         self.db = db
+        self.tag_repo = tag_repo
     
     def get_by_id(self, photo_id: int) -> Optional[Dict[str, Any]]:
         """通过 ID 获取照片"""
@@ -151,6 +152,27 @@ class PhotoRepo:
         self.db.commit()
         return True
     
+    def add_tags_from_path(self, photo_id: int, file_path: str, import_root: str = None):
+        """从文件路径提取标签并关联到照片
+        
+        Args:
+            photo_id: 照片 ID
+            file_path: 照片文件路径
+            import_root: 导入根目录（用于计算相对路径）
+        """
+        if not self.tag_repo:
+            return
+        
+        from .path_utils import extract_tags_from_path
+        
+        tags = extract_tags_from_path(file_path, import_root)
+        
+        for tag_name in tags:
+            tag_id = self.tag_repo.get_or_create(tag_name)
+            self.tag_repo.add_photo_tag(photo_id, tag_id)
+        
+        log.info(f"Added {len(tags)} tags to photo {photo_id}: {tags}")
+    
     def delete(self, photo_id: int) -> bool:
         """删除照片"""
         self.db.execute(
@@ -191,6 +213,23 @@ class TagRepo:
         )
         row = cursor.fetchone()
         return dict(row) if row else None
+    
+    def get_or_create(self, name: str, color: str = '#808080') -> int:
+        """获取或创建标签，返回标签 ID
+        
+        Args:
+            name: 标签名
+            color: 标签颜色（仅创建时使用）
+            
+        Returns:
+            标签 ID
+        """
+        # 先查找
+        existing = self.get_by_name(name)
+        if existing:
+            return existing['id']
+        # 不存在则创建
+        return self.create(name, color)
     
     def create(self, name: str, color: str = '#808080', parent_id: int = None) -> int:
         """创建标签"""

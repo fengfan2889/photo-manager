@@ -41,7 +41,8 @@ class PhotoOrganizer:
         duplicate_mode: str = 'skip',
         on_progress: Optional[Callable] = None,
         photo_repo=None,  # 可选：用于保存到数据库
-        import_recorder=None  # 可选：导入记录器
+        import_recorder=None,  # 可选：导入记录器
+        db=None  # 可选：数据库连接，用于记录操作日志
     ):
         """初始化整理器
         
@@ -63,6 +64,7 @@ class PhotoOrganizer:
         self.on_progress = on_progress
         self.photo_repo = photo_repo  # 数据库仓库
         self.import_recorder = import_recorder  # 导入记录器
+        self.db = db  # 数据库连接，用于记录操作日志
         
         # 导入会话 ID
         self.import_id: Optional[int] = None
@@ -126,6 +128,15 @@ class PhotoOrganizer:
                 log.error(f"Failed to process {file_path}", exc_info=e)
                 self.failed += 1
                 self.errors.append(f"{file_path}: {str(e)}")
+                # 记录失败照片操作日志
+                if self.db:
+                    self.db.record_log_operation(
+                        action='failed',
+                        source_path=str(file_path),
+                        action_type='import',
+                        status='failed',
+                        error_msg=str(e)
+                    )
                 # 记录失败到导入明细
                 if self.import_recorder and self.import_id:
                     self.import_recorder.record_item(
@@ -202,6 +213,28 @@ class PhotoOrganizer:
             if action == 'skipped':
                 log.info(f"Skipping duplicate file: {file_path.name} (hash={file_hash[:16]}...) existing_path={existing_path}")
                 self.skipped += 1
+                # 记录照片操作日志
+                if self.db:
+                    self.db.record_log_operation(
+                        action='skipped',
+                        source_path=str(file_path),
+                        dest_path=existing_path,
+                        action_type='import',
+                        status='success',
+                        error_msg='duplicate'
+                    )
+                # 为已存在的照片添加来自新路径的标签
+                if self.photo_repo and file_hash:
+                    try:
+                        existing_photo = self.photo_repo.get_by_hash(file_hash)
+                        if existing_photo:
+                            self.photo_repo.add_tags_from_path(
+                                existing_photo['id'],
+                                str(file_path),
+                                str(self.source_dir)
+                            )
+                    except Exception as e:
+                        log.error(f"Failed to add tags to existing photo: {e}", exc_info=e)
                 # 记录到导入明细
                 self.import_recorder.record_item(
                     import_id=self.import_id,
@@ -313,7 +346,28 @@ class PhotoOrganizer:
         
         # 保存到数据库
         if self.photo_repo:
-            self._save_to_database(file_path, target_path, parse_result, file_hash)
+            photo_id = self._save_to_database(file_path, target_path, parse_result, file_hash)
+            # 记录照片操作日志
+            self.db.record_log_operation(
+                action='added',
+                source_path=str(file_path),
+                dest_path=str(target_path),
+                action_type='import',
+                status='success',
+                photo_id=photo_id
+            )
+            # 从文件路径提取标签并关联
+            if photo_id and self.photo_repo:
+                try:
+                    self.photo_repo.add_tags_from_path(
+                        photo_id,
+                        str(file_path),
+                        str(self.source_dir)
+                    )
+                except Exception as e:
+                    log.error(f"Failed to extract tags from path: {e}", exc_info=e)
+        else:
+            photo_id = None
         
         # 记录到导入明细
         if self.import_recorder and self.import_id:
@@ -428,7 +482,7 @@ class PhotoOrganizer:
         except Exception as e:
             log.error(f"Failed to save move log: {e}", exc_info=True)
     
-    def _save_to_database(self, source_path: Path, dest_path: Path, parse_result: dict, file_hash: str = None):
+    def _save_to_database(self, source_path: Path, dest_path: Path, parse_result: dict, file_hash: str = None) -> int:
         """保存照片信息到数据库
         
         Args:
@@ -436,6 +490,9 @@ class PhotoOrganizer:
             dest_path: 目标文件路径
             parse_result: 解析结果
             file_hash: 预计算的文件哈希
+            
+        Returns:
+            保存的照片记录 ID，失败返回 None
         """
         try:
             # 如果没有预计算哈希，则计算
@@ -488,9 +545,11 @@ class PhotoOrganizer:
             
             self.photo_repo.insert(data)
             log.info(f"Added to database: {dest_path.name}")
+            return data.get('id')  # 返回插入的记录 ID
             
         except Exception as e:
             log.error(f"Failed to save to database: {e}", exc_info=True)
+            return None
     
     def _generate_thumbnail(self, file_path: Path, size: int = 200) -> Optional[str]:
         """生成缩略图

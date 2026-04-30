@@ -290,6 +290,12 @@ function ImportHistoryContent() {
                           <div className="font-mono text-xs truncate" title={item.file_path}>
                             {item.file_path}
                           </div>
+                          {/* 重复文件：同时显示原路径和目标路径 */}
+                          {item.action === 'skipped' && item.organized_path && (
+                            <div className="text-xs text-gray-500 mt-1">
+                              <span className="text-gray-400">目标:</span> {item.organized_path}
+                            </div>
+                          )}
                           {item.reason && (
                             <div className="text-gray-500 text-xs mt-1">{item.reason}</div>
                           )}
