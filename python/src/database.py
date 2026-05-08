@@ -123,14 +123,14 @@ class Database:
             taken_at, taken_at_local, created_at_file, modified_at_file,
             camera_make, camera_model, lens_model, iso, aperture,
             shutter_speed, focal_length, latitude, longitude,
-            organized_path, organized_date, is_portrait, rating,
+            organized_path, organized_date, rating,
             thumb_path, exif_json
         ) VALUES (
             :file_path, :file_hash, :file_size, :file_name,
             :taken_at, :taken_at_local, :created_at_file, :modified_at_file,
             :camera_make, :camera_model, :lens_model, :iso, :aperture,
             :shutter_speed, :focal_length, :latitude, :longitude,
-            :organized_path, :organized_date, :is_portrait, :rating,
+            :organized_path, :organized_date, :rating,
             :thumb_path, :exif_json
         )
         """
@@ -164,14 +164,13 @@ def init_database(db_path: str = None) -> Database:
         aperture            REAL,
         shutter_speed       TEXT,
         focal_length        REAL,
-        latitude            REAL,
-        longitude           REAL,
-        organized_path      TEXT,
-        organized_date      TEXT,
-        is_portrait         INTEGER DEFAULT 0,
-        rating              INTEGER DEFAULT 0,
-        thumb_path          TEXT,
-        exif_json           TEXT
+        latitude        REAL,
+        longitude       REAL,
+        organized_path  TEXT,
+        organized_date  TEXT,
+        rating          INTEGER DEFAULT 0,
+        thumb_path      TEXT,
+        exif_json       TEXT
     )
     """)
     
@@ -306,7 +305,6 @@ def init_database(db_path: str = None) -> Database:
     db.execute("CREATE INDEX IF NOT EXISTS idx_photo_info_taken_at ON photo_info(taken_at)")
     db.execute("CREATE INDEX IF NOT EXISTS idx_photo_info_organized_date ON photo_info(organized_date)")
     db.execute("CREATE INDEX IF NOT EXISTS idx_photo_info_rating ON photo_info(rating)")
-    db.execute("CREATE INDEX IF NOT EXISTS idx_photo_info_is_portrait ON photo_info(is_portrait)")
     db.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_photo_tag_name ON photo_tag(name)")
     db.execute("CREATE INDEX IF NOT EXISTS idx_photo_photo_tag_photo ON photo_photo_tag(photo_id)")
     db.execute("CREATE INDEX IF NOT EXISTS idx_photo_photo_tag_tag ON photo_photo_tag(tag_id)")

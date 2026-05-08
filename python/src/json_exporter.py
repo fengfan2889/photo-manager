@@ -72,7 +72,7 @@ class JsonExporter:
                 taken_at, taken_at_local, created_at_file, modified_at_file,
                 camera_make, camera_model, lens_model, iso, aperture,
                 shutter_speed, focal_length, latitude, longitude,
-                organized_path, organized_date, is_portrait, rating,
+                organized_path, organized_date, rating,
                 thumb_path, exif_json, created_at
             FROM photo_info
             ORDER BY id
@@ -267,7 +267,6 @@ class JsonImporter:
                 'longitude': photo.get('longitude'),
                 'organized_path': photo.get('organized_path'),
                 'organized_date': photo.get('organized_date'),
-                'is_portrait': photo.get('is_portrait', 0),
                 'rating': photo.get('rating', 0),
                 'thumb_path': photo.get('thumb_path'),
                 'exif_json': photo.get('exif_json')

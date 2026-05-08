@@ -537,7 +537,6 @@ class PhotoOrganizer:
                 'longitude': None,
                 'organized_path': None,
                 'organized_date': datetime.now().isoformat(),
-                'is_portrait': 0,
                 'rating': 0,
                 'thumb_path': None,
                 'exif_json': None,
