@@ -1,5 +1,5 @@
 import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
-import { join } from 'path'
+import { join, dirname } from 'path'
 import { spawn, ChildProcess } from 'child_process'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import log from 'electron-log'
@@ -7,13 +7,20 @@ import * as fs from 'fs'
 
 // 初始化日志
 log.initialize()
-// 设置日志文件路径为当前目录
-const currentDir = process.cwd()
-log.transports.file.resolvePath = () => `${currentDir}/logs/main.log`
-log.transports.file.level = 'trace'
+// 设置日志文件路径为程序目录下的 logs/
+// 开发时：项目目录下的 logs/
+// 打包后：exe 所在目录下的 logs/
+const exeDir = app.isPackaged ? dirname(app.getPath('exe')) : app.getAppPath()
+const logDir = join(exeDir, 'logs')
+// 确保日志目录存在
+if (!fs.existsSync(logDir)) {
+  fs.mkdirSync(logDir, { recursive: true })
+}
+log.transports.file.resolvePath = () => join(logDir, 'main.log')
+log.transports.file.level = 'debug'
 log.transports.console.level = 'debug'
 log.info('Application starting...')
-log.info(`Log file path: ${currentDir}/logs/main.log`)
+log.info(`Log file path: ${logDir}/main.log`)
 
 // Python 进程
 let pythonProcess: ChildProcess | null = null
@@ -29,17 +36,37 @@ function initPython(): void {
   // 查找 Python
   const pythonPath = process.platform === 'win32' ? 'python' : 'python3'
   
-  // Python 包目录
+  // Python 包目录 (extraResources 打包到 resources/python/ 下)
+  // app.getAppPath() 在打包后指向 resources/app.asar，所以 .. 就是 resources/
   const pythonDir = join(app.getAppPath(), '..', 'python')
   const args = ['-m', 'src.main', '--ipc']
 
+  // 数据库目录（程序目录下的 data/）
+  const dbDir = join(exeDir, 'data')
+
+  // 确保目录存在
+  const fs = require('fs')
+  ;[dbDir, logDir].forEach(dir => {
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true })
+    }
+  })
+
   log.info('Python command:', pythonPath, args)
+  log.info('Python directory:', pythonDir)
+  log.info('Database directory:', dbDir)
+  log.info('Log directory:', logDir)
 
   try {
     pythonProcess = spawn(pythonPath, args, {
       cwd: pythonDir,
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
+      env: {
+        ...process.env,
+        PYTHONIOENCODING: 'utf-8',
+        PHOTOMANAGER_DB_DIR: dbDir,
+        PYTHON_LOG_DIR: logDir
+      }
     })
 
     // 等待 Python 就绪信号
@@ -196,15 +223,23 @@ function handlePythonResponse(response: any): void {
   }
 }
 
-function pythonExec(command: string, args: object = {}): Promise<any> {
-  return new Promise((resolve, reject) => {
-    log.info('pythonExec called', { command, pythonReady, hasProcess: !!pythonProcess })
-    
-    if (!pythonReady || !pythonProcess) {
-      log.error('Python not ready', { pythonReady, hasProcess: !!pythonProcess })
-      reject(new Error('Python not ready'))
-      return
-    }
+  function pythonExec(command: string, args: object = {}): Promise<any> {
+    return new Promise((resolve, reject) => {
+      log.info('pythonExec called', { command, pythonReady, hasProcess: !!pythonProcess })
+      
+      // 初始化命令不需要等待 ready
+      const initCommands = ['get-current-dir']
+      if (!pythonReady && !initCommands.includes(command)) {
+        log.error('Python not ready', { pythonReady, hasProcess: !!pythonProcess })
+        reject(new Error('Python not ready'))
+        return
+      }
+      
+      if (!pythonProcess) {
+        log.error('Python process not available')
+        reject(new Error('Python process not available'))
+        return
+      }
 
     const id = Date.now().toString() + Math.random().toString(36).substr(2)
     const request = { id, command, args }
@@ -223,9 +258,6 @@ function pythonExec(command: string, args: object = {}): Promise<any> {
         reject(new Error('Request timeout'))
       }
     }, 1800000)
-    
-    // 清理超时
-    pendingRequests.get(id)?.cleanup?.(() => clearTimeout(timeout))
   })
 }
 
@@ -248,8 +280,8 @@ function createWindow(): void {
     }
   })
 
-  mainWindow.on('ready-to-show', () => {
-    mainWindow.show()
+  mainWindow?.on('ready-to-show', () => {
+    mainWindow?.show()
     log.info('Main window shown')
   })
 
@@ -284,7 +316,11 @@ function setupIpcHandlers(): void {
 
   // 日志设置
   ipcMain.handle('set-log-level', async (_, level: string) => {
-    log.transports.console.level = level.toLowerCase()
+    const validLevels = ['trace', 'debug', 'info', 'warn', 'error', 'silent']
+    const normalizedLevel = level.toLowerCase()
+    if (validLevels.includes(normalizedLevel)) {
+      log.transports.console.level = normalizedLevel as 'debug'
+    }
     log.info(`Log level changed to: ${level}`)
     return true
   })
