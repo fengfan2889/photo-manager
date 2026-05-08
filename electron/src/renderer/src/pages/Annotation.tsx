@@ -85,7 +85,6 @@ export default function Annotation() {
       if (result?.success && result.data) {
         const data = result.data as { count: number; faces: Face[] }
         setFaces(data.faces || [])
-        setPhoto({ ...photo, is_portrait: data.count > 0 ? 1 : 0 })
         logger.info(`Detected ${data.count} faces`)
       } else {
         showError('人脸检测失败', result?.error)

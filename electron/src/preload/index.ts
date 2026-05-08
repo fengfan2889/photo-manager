@@ -100,17 +100,17 @@ export interface Photo {
   taken_at: string | null
   organized_date: string | null
   rating: number
-  is_portrait: number
   thumb_path: string | null
 }
 
 export interface PhotoFilters {
-  rating?: number
-  is_portrait?: boolean
-  tag_id?: number
-  date_from?: string
-  date_to?: string
-  search?: string
+    rating?: number
+    rating_min?: number
+    tag_id?: number
+    tag_ids?: number[]
+    date_from?: string
+    date_to?: string
+    search?: string
 }
 
 export interface Face {
@@ -128,6 +128,7 @@ export interface Tag {
   id: number
   name: string
   color: string
+  photo_count?: number
 }
 
 export interface Progress {

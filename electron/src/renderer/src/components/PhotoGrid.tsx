@@ -66,13 +66,6 @@ export default function PhotoGrid({ photos, loading }: PhotoGridProps) {
               )}
             </div>
           </div>
-
-          {/* 人像标记 */}
-          {photo.is_portrait === 1 && (
-            <div className="absolute top-2 right-2 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
-              <span className="text-white text-xs">👤</span>
-            </div>
-          )}
         </div>
       ))}
     </div>
