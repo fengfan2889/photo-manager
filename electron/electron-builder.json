@@ -18,6 +18,10 @@
       "from": "../python/src",
       "to": "python/src",
       "filter": ["**/*"]
+    },
+    {
+      "from": "../python/requirements.txt",
+      "to": "requirements.txt"
     }
   ],
   "win": {
@@ -25,9 +29,12 @@
       {
         "target": "nsis",
         "arch": ["x64"]
+      },
+      {
+        "target": "portable",
+        "arch": ["x64"]
       }
-    ],
-    "artifactName": "${productName}-${version}-Setup.${ext}"
+    ]
   },
   "nsis": {
     "oneClick": false,
@@ -35,7 +42,11 @@
     "allowToChangeInstallationDirectory": true,
     "deleteAppDataOnUninstall": false,
     "createDesktopShortcut": true,
-    "createStartMenuShortcut": true
+    "createStartMenuShortcut": true,
+    "shortcutName": "PhotoManager"
+  },
+  "portable": {
+    "artifactName": "${productName}-${version}-Portable.${ext}"
   },
   "mac": {
     "target": ["dmg"],
