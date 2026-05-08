@@ -21,15 +21,22 @@ from .setting_repo import SettingRepo
 from .import_recorder import ImportRecorder
 
 # 初始化日志
+# 日志目录：优先使用 PYTHON_LOG_DIR 环境变量，否则使用当前目录
 import os
-current_dir = os.getcwd()
-Logger.init(log_dir=current_dir, level="INFO")
+log_dir = os.environ.get('PYTHON_LOG_DIR', os.getcwd())
+Logger.init(log_dir=log_dir, level="INFO")
 log = get_logger(__name__)
-log.info(f"Python log directory: {current_dir}")
+log.info(f"Python log directory: {log_dir}")
 
-# 数据库路径 - 项目目录下 doc/db/sqlite/
+# 数据库路径
+# 优先使用环境变量 PHOTOMANAGER_DB_DIR，否则使用项目目录下的 doc/db/sqlite/
 # __file__ = python/src/main.py, parent=python/src, parent=python, parent=项目根目录
-DB_PATH = Path(__file__).parent.parent.parent / "doc" / "db" / "sqlite" / "photo-manager.db"
+import os
+_db_base = os.environ.get('PHOTOMANAGER_DB_DIR')
+if _db_base:
+    DB_PATH = Path(_db_base) / "photo-manager.db"
+else:
+    DB_PATH = Path(__file__).parent.parent.parent / "doc" / "db" / "sqlite" / "photo-manager.db"
 log.info(f"Database path: {DB_PATH}")
 
 
@@ -195,28 +202,29 @@ class IPCServer:
         """查询照片"""
         limit = args.get("limit", 100)
         offset = args.get("offset", 0)
-        
+         
         log.info(f"Query photos: limit={limit}, offset={offset}")
-        
+         
         photos = self.photo_repo.get_list(
             limit=limit,
             offset=offset,
             rating=args.get("rating"),
-            is_portrait=args.get("is_portrait"),
+            rating_min=args.get("rating_min"),
             tag_id=args.get("tag_id"),
+            tag_ids=args.get("tag_ids"),
             date_from=args.get("date_from"),
             date_to=args.get("date_to"),
             search=args.get("search")
         )
-        
+         
         log.info(f"Query photos result: {len(photos)} items")
-        
+         
         # 转换日期
         for photo in photos:
             for key in ['taken_at', 'created_at', 'created_at_file', 'modified_at_file']:
                 if photo.get(key):
                     photo[key] = str(photo[key])
-        
+         
         return {"success": True, "data": photos}
     
     def _get_photo(self, args: Dict) -> Dict:
@@ -417,14 +425,12 @@ class IPCServer:
     def _get_stats(self, args: Dict) -> Dict:
         """获取统计信息"""
         total = self.photo_repo.count()
-        portrait_count = self.photo_repo.count(is_portrait=True)
         tagged_count = self.photo_repo.count(tag_id=args.get("tag_id"))
-        
+         
         return {
             "success": True,
             "data": {
                 "total_photos": total,
-                "portrait_photos": portrait_count,
                 "tagged_photos": tagged_count
             }
         }

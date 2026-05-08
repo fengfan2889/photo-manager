@@ -41,8 +41,9 @@ class PhotoRepo:
         limit: int = 100,
         offset: int = 0,
         rating: int = None,
-        is_portrait: bool = None,
+        rating_min: int = None,
         tag_id: int = None,
+        tag_ids: List[int] = None,
         date_from: str = None,
         date_to: str = None,
         search: str = None
@@ -50,59 +51,72 @@ class PhotoRepo:
         """获取照片列表"""
         sql = "SELECT DISTINCT p.* FROM photo_info p WHERE 1=1"
         params = []
-        
+         
         if rating is not None:
             sql += " AND p.rating = ?"
             params.append(rating)
-        
-        if is_portrait is not None:
-            sql += " AND p.is_portrait = ?"
-            params.append(1 if is_portrait else 0)
-        
+            
+        if rating_min is not None:
+            sql += " AND p.rating >= ?"
+            params.append(rating_min)
+          
+        # 单标签过滤（保持向后兼容）
         if tag_id is not None:
             sql += " AND EXISTS (SELECT 1 FROM photo_photo_tag pt WHERE pt.photo_id = p.id AND pt.tag_id = ?)"
             params.append(tag_id)
-        
+         
+        # 多标签过滤
+        if tag_ids is not None and len(tag_ids) > 0:
+            placeholders = ','.join(['?' for _ in tag_ids])
+            sql += f" AND EXISTS (SELECT 1 FROM photo_photo_tag pt WHERE pt.photo_id = p.id AND pt.tag_id IN ({placeholders}))"
+            params.extend(tag_ids)
+         
         if date_from:
             sql += " AND p.taken_at >= ?"
             params.append(date_from)
-        
+         
         if date_to:
             sql += " AND p.taken_at <= ?"
             params.append(date_to)
-        
+         
         if search:
-            sql += " AND (p.file_name LIKE ? OR p.camera_model LIKE ?)"
-            params.extend([f'%{search}%', f'%{search}%'])
-        
+            search_term = f'%{search}%'
+            sql += """ AND (
+                p.file_name LIKE ? 
+                OR p.camera_model LIKE ?
+                OR p.camera_make LIKE ?
+                OR p.taken_at LIKE ?
+                OR EXISTS (
+                    SELECT 1 FROM photo_photo_tag ppt 
+                    JOIN photo_tag t ON ppt.tag_id = t.id 
+                    WHERE ppt.photo_id = p.id AND t.name LIKE ?
+                )
+            )"""
+            params.extend([search_term] * 5)  # file_name, camera_model, camera_make, taken_at, tag_name
+         
         sql += " ORDER BY p.created_at DESC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
-        
+         
         cursor = self.db.execute(sql, tuple(params))
         return [dict(row) for row in cursor.fetchall()]
     
     def count(
         self,
         rating: int = None,
-        is_portrait: bool = None,
         tag_id: int = None
     ) -> int:
         """获取照片总数"""
         sql = "SELECT COUNT(*) as count FROM photo_info WHERE 1=1"
         params = []
-        
+         
         if rating is not None:
             sql += " AND rating = ?"
             params.append(rating)
-        
-        if is_portrait is not None:
-            sql += " AND is_portrait = ?"
-            params.append(1 if is_portrait else 0)
-        
+         
         if tag_id is not None:
             sql += " AND EXISTS (SELECT 1 FROM photo_photo_tag pt WHERE pt.photo_id = photo_info.id AND pt.tag_id = ?)"
             params.append(tag_id)
-        
+         
         cursor = self.db.execute(sql, tuple(params))
         row = cursor.fetchone()
         return row['count'] if row else 0
@@ -141,15 +155,6 @@ class PhotoRepo:
         )
         self.db.commit()
         log.debug(f"Set rating {rating} for photo {photo_id}")
-        return True
-    
-    def set_portrait(self, photo_id: int, is_portrait: bool) -> bool:
-        """设置人像标记"""
-        self.db.execute(
-            "UPDATE photo_info SET is_portrait = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            (1 if is_portrait else 0, photo_id)
-        )
-        self.db.commit()
         return True
     
     def add_tags_from_path(self, photo_id: int, file_path: str, import_root: str = None):
